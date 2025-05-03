@@ -5,7 +5,7 @@ class Organism {
     this.y = y;
     
     // Physical attributes
-    this.size = 2; // Slightly increased size for visibility
+    this.size = 4; // Slightly increased size for visibility
     
     // Memory of visited locations
     this.visitedLocations = new Map(); // Grid coordinates -> timestamp
@@ -18,31 +18,35 @@ class Organism {
     // Track movement history for visualization
     this.history = [];
     this.maxHistoryLength = 10;
+    
+    // Berry-related attributes
+    this.Energy = 5.0; // Starting energy from berries
+    this.MaxEnergy = 10.0;
+    this.EnergyLossRate = 0.01; // Energy consumed per frame
   }
   
   // Display the organism with improved visualization
   display() {
     // Draw movement history first (so it appears behind the organism)
-    noFill(); // No fill for the shape
-    stroke(255, 150); // White stroke with some transparency
-    strokeWeight(1); // Adjust thickness of the path
-    beginShape();
-    for (let i = 0; i < this.history.length; i++) {
-      let pos = this.history[i];
-      vertex(pos.x, pos.y); // Add each point in history as a vertex
-    }
-    endShape();
+    // noFill(); // No fill for the shape
+    // stroke(255, 150); // White stroke with some transparency
+    // strokeWeight(4); // Adjust thickness of the path
+    // beginShape();
+    // for (let i = 0; i < this.history.length; i++) {
+    //   let pos = this.history[i];
+    //   vertex(pos.x, pos.y); // Add each point in history as a vertex
+    // }
+    // endShape();
     
-    // Draw the organism with different appearance based on resource level
-    let currentResource = getResourceAt(this.x, this.y);
-    
-    // Size variation based on resource level
-    let sizeVariation = map(currentResource, 0, 1, 0.8, 1.2);
+    // Size variation based on berry energy
+    let sizeVariation = map(this.Energy, 0, this.MaxEnergy, 0.8, 2.5);
     let displaySize = this.size * sizeVariation;
     
-    // Color variation based on resource level
-    // Higher resources = brighter red
-    fill(255, 40 + currentResource * 160, 40);
+    // Color variation based on berry energy
+    // Higher energy = brighter color
+    let energyRatio = this.Energy / this.MaxEnergy;
+    // fill(255 * energyRatio, 255 * energyRatio, 255*energyRatio); // White with transparency
+    fill(255,0,0);
     noStroke();
     ellipse(this.x, this.y, displaySize, displaySize);
     
@@ -59,12 +63,6 @@ class Organism {
         { dx: -1, dy: 0 },   // West
         { dx: -1, dy: -1 }   // Northwest
       ];
-      
-      // let dir = directions[this.lastDirection];
-      // stroke(0, 150);
-      // line(this.x, this.y, 
-      //      this.x + dir.dx * displaySize, 
-      //      this.y + dir.dy * displaySize);
     }
   }
   
@@ -74,6 +72,10 @@ class Organism {
     if (frameCount % 30 !== 0) {
       return;
     }
+    
+    // Deplete energy over time
+    this.berryEnergy -= this.energyDepletionRate * 2;
+    this.berryEnergy = max(0, this.berryEnergy);
     
     // Increment move counter
     this.moveCount++;
@@ -97,6 +99,9 @@ class Organism {
       }
     }
     
+    // Check if we're near a berry bush
+    let nearestBerry = getNearestBerryBush(this.x, this.y);
+    
     // Use 8 directions (NSEW + diagonals) aligned with grid
     const directions = [
       { dx: 0, dy: -1, name: "N" },   // North
@@ -110,14 +115,12 @@ class Organism {
       { dx: 0, dy: 0, name: "Stay" }  // Stay in place
     ];
     
-    // Check neighborhood for resource gradient
-    let resourceGradients = new Array(directions.length - 1).fill(0); // Skip "stay" direction
-    let currentResource = getResourceAt(this.x, this.y);
-    let totalResourceDiff = 0;
+    // Check neighborhood for potential moves
+    let moveWeights = new Array(directions.length).fill(0);
     let validDirections = [];
     
     // Check each potential direction
-    for (let i = 0; i < directions.length - 1; i++) { // Skip "stay" option for gradient calculation
+    for (let i = 0; i < directions.length - 1; i++) { // Skip "stay" option for initial evaluation
       let dir = directions[i];
       let nextX = this.x + dir.dx * cellSize;
       let nextY = this.y + dir.dy * cellSize;
@@ -129,8 +132,8 @@ class Organism {
       nextGridY = (nextGridY + rows) % rows;
       
       // Skip water cells
-      if (grid[nextGridX][nextGridY] === OCEAN) {
-        resourceGradients[i] = -1; // Invalid direction
+      if (getTerrainTypeAt(nextX, nextY) === OCEAN) {
+        moveWeights[i] = 0; // Invalid direction
         continue;
       }
       
@@ -139,7 +142,7 @@ class Organism {
       if (this.visitedLocations.has(nextLocationKey)) {
         let visitedAge = this.moveCount - this.visitedLocations.get(nextLocationKey);
         if (visitedAge < this.memoryDuration / 2) { // Recently visited
-          resourceGradients[i] = -0.5; // Not invalid but discouraged
+          moveWeights[i] = 0.2; // Not invalid but discouraged
           continue;
         }
       }
@@ -147,78 +150,78 @@ class Organism {
       // Valid direction
       validDirections.push(i);
       
-      // Calculate resource gradient (difference from current position)
-      let nextResource = resources[nextGridX][nextGridY];
-      let resourceDiff = nextResource - currentResource;
-      
-      // Apply gradient awareness
-      resourceGradients[i] = resourceDiff;
-      
-      // Keep track of total gradient magnitude for normalization
-      totalResourceDiff += Math.abs(resourceDiff);
-    }
-    
-    // If no valid moves, just stay put
-    if (validDirections.length === 0) {
-      // Update history for visualization
-      this.updateHistory();
-      return;
-    }
-    
-    // Create weighted probabilities for each direction
-    let moveWeights = new Array(directions.length).fill(0);
-    
-    // Set base weights based on resource gradients and continuity
-    for (let i = 0; i < directions.length - 1; i++) {
-      if (resourceGradients[i] === -1) continue; // Skip invalid directions
-      
       // Base weight is 1
-      let weight = 1;
+      moveWeights[i] = 1;
       
-      // Adjust weight based on resource gradient
-      // - Positive gradients get boosted
-      // - Negative gradients are reduced but still possible
-      if (resourceGradients[i] > 0) {
-        weight += resourceGradients[i] * 10; // Strongly favor better resources
-      } else if (resourceGradients[i] === -0.5) {
-        weight = 0.2; // Discourage but don't eliminate recently visited cells
-      } else {
-        weight += resourceGradients[i] * 2; // Less punishment for declining resources
+      // Adjust based on berry direction if we know of one
+      if (nearestBerry.bush && nearestBerry.distance > 0) {
+        // Direction to berry
+        let dx = nearestBerry.bush.x - this.x;
+        let dy = nearestBerry.bush.y - this.y;
+        let angleToBerry = atan2(dy, dx);
+        
+        // Direction of this move option
+        let moveAngle = atan2(dir.dy, dir.dx);
+        
+        // Calculate how closely this direction aligns with berry direction
+        // (1 = perfect alignment, -1 = opposite direction)
+        let angleAlignment = cos(angleToBerry - moveAngle);
+        
+        // If low on energy, strongly prefer berry direction
+        let energyUrgency = map(this.berryEnergy, 0, this.maxBerryEnergy, 5, 1);
+        
+        // Boost weight if pointing toward berry (more if energy is low)
+        if (angleAlignment > 0) {
+          moveWeights[i] += angleAlignment * 5 * energyUrgency;
+        }
+        
+        // If very close to a berry, give extra weight to the exact direction
+        if (nearestBerry.distance < BERRY_HARVEST_DISTANCE * 1.5) {
+          if (angleAlignment > 0.7) { // Fairly direct path
+            moveWeights[i] += 5;
+          }
+        }
       }
       
       // Prefer continuing in the same direction (momentum)
       if (this.lastDirection !== null && i === this.lastDirection) {
-        weight *= 1.5; // Bonus for continuing same direction
+        moveWeights[i] *= 1.2; // Bonus for continuing same direction
       }
-      
-      // Ensure weight is positive (minimum chance)
-      moveWeights[i] = Math.max(0.1, weight);
     }
     
-    // Add weight for staying put - reduced if at low resources
-    moveWeights[8] = 0.5 * (currentResource < 0.4 ? 0.2 : 1.0);
+    // Add weight for staying put - higher if near a berry
+    moveWeights[8] = 0.2;
+    if (nearestBerry.bush && nearestBerry.distance < BERRY_HARVEST_DISTANCE) {
+      moveWeights[8] = 2.0; // Strongly prefer staying near berries to harvest them
+    }
     
     // Determine if we should have an exploration phase
-    let isExploring = random() < 0.2; // 20% chance of exploration mode
+    let isExploring = random() < 0.15; // 15% chance of exploration mode
     
     let chosenDirectionIndex;
-    if (isExploring) {
+    if (isExploring && validDirections.length > 0) {
       // During exploration, just pick a valid direction randomly
       chosenDirectionIndex = validDirections[floor(random(validDirections.length))];
     } else {
       // Normal mode: Use weighted probability to choose direction
       let totalWeight = moveWeights.reduce((sum, weight) => sum + weight, 0);
-      let randomValue = random() * totalWeight;
-      let cumulativeWeight = 0;
       
-      chosenDirectionIndex = moveWeights.findIndex(weight => {
-        cumulativeWeight += weight;
-        return randomValue <= cumulativeWeight;
-      });
-      
-      // Fallback in case of numerical errors
-      if (chosenDirectionIndex === -1) {
-        chosenDirectionIndex = validDirections[0];
+      // If no valid weights, just stay put
+      if (totalWeight <= 0) {
+        chosenDirectionIndex = 8; // "Stay" direction
+      } else {
+        let randomValue = random() * totalWeight;
+        let cumulativeWeight = 0;
+        
+        chosenDirectionIndex = moveWeights.findIndex(weight => {
+          cumulativeWeight += weight;
+          return randomValue <= cumulativeWeight;
+        });
+        
+        // Fallback in case of numerical errors
+        if (chosenDirectionIndex === -1) {
+          chosenDirectionIndex = validDirections.length > 0 ? validDirections[0] : 8;
+        }
       }
     }
     
@@ -236,6 +239,9 @@ class Organism {
     
     // Update movement history for visualization
     this.updateHistory();
+    
+    // Check if we're harvesting berries
+    this.harvestNearbyBerries();
   }
   
   // Helper method to update movement history
@@ -245,6 +251,24 @@ class Organism {
     // Limit history length
     if (this.history.length > this.maxHistoryLength) {
       this.history.pop();
+    }
+  }
+  
+  // Method to harvest berries from nearby bushes
+  harvestNearbyBerries() {
+    let nearestBerry = getNearestBerryBush(this.x, this.y);
+    
+    if (nearestBerry.bush && nearestBerry.distance < BERRY_HARVEST_DISTANCE) {
+      // We're close to a berry bush with berries
+      let harvestAmount = 0.02; // How many berries to collect per frame
+      let harvested = nearestBerry.bush.harvest(harvestAmount);
+      
+      // Add to our energy based on harvested amount
+      if (harvested > 0) {
+        this.berriesCollected += harvested;
+        this.berryEnergy += harvested * 0.5; // Convert berries to energy
+        this.berryEnergy = min(this.berryEnergy, this.maxBerryEnergy); // Cap at max
+      }
     }
   }
 }
