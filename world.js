@@ -34,7 +34,7 @@ function setup() {
   createCanvas(width, height);
   pixelDensity(1); // High pixel density for better quality on high-DPI screens
   noSmooth(); // Prevents image smoothing
-  frameRate(5);
+  frameRate(30);
   
   // Generate initial food
   for (let i = 0; i < foodCount; i++) {

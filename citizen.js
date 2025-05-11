@@ -117,6 +117,8 @@ class Citizen {
     this.house = null;          // The house this citizen owns
     this.houseTarget = null;    // House being targeted for construction
   }
+
+  
   
   update() {
     // Update lifespan and check death conditions
@@ -843,22 +845,122 @@ class Citizen {
     pop();
   }
 
-  display() {
-    // Draw movement trail
-    this.drawHistory();
+// Add this to the Citizen class in citizen.js
+
+// Function to display motivation chart when this citizen is being followed
+displayMotivationChart() {
+
+  // Only show if this citizen is being followed
+  if (followingCitizen === this) {
+    console.log("WHAT")
+    push();
     
-    // Consolidated display logic
-    if (this.state.isDead) {
-      this.displayDead();
-    } else {
-      this.displayAlive();
+    // Use fixed screen coordinates for the chart
+    translate(this.x, this.y);
+    scale(1/cameraZoom);
+    
+    // Chart properties
+    let chartX = -75;  // Position on right side of screen
+    let chartY = -250;           // Position near top
+    let chartWidth = 150;
+    let chartHeight = 150;
+    let barSpacing = 30;
+    let barWidth = 25;
+    
+    // Background
+    fill(0, 0, 0, 180);
+    stroke(255, 255, 255, 100);
+    strokeWeight(1);
+    rect(chartX - 10, chartY - 10, chartWidth + 20, chartHeight + 40);
+    
+    // Title
+    fill(255);
+    textSize(12);
+    textAlign(CENTER);
+    text("Motivation Scores", chartX + chartWidth/2, chartY + 10);
+    
+    // Create array of motivations with colors
+    let motivations = [
+      { name: 'rest', score: this.motivationScores.rest, color: color(100, 100, 255) },
+      { name: 'exercise', score: this.motivationScores.exercise, color: color(255, 165, 0) },
+      { name: 'seekFood', score: this.motivationScores.seekFood, color: color(50, 255, 50) },
+      { name: 'collectWood', score: this.motivationScores.collectWood, color: color(139, 69, 19) },
+      { name: 'buildHouse', score: this.motivationScores.buildHouse, color: color(255, 100, 100) },
+      { name: 'idle', score: this.motivationScores.idle, color: color(150, 150, 150) }
+    ];
+    
+    // Calculate starting position for bars
+    let startX = chartX + 10;
+    let baseY = chartY + chartHeight;
+    
+    // Draw bars for each motivation
+    for (let i = 0; i < motivations.length; i++) {
+      let motivation = motivations[i];
+      let barX = startX + i * barSpacing;
+      let barHeight = map(motivation.score, 0, 100, 0, chartHeight - 30);
+      
+      // Draw bar
+      fill(motivation.color);
+      noStroke();
+      rect(barX, baseY - barHeight, barWidth, barHeight);
+      
+      // Draw label (shortened names)
+      fill(255);
+      textSize(8);
+      textAlign(CENTER);
+      push();
+      translate(barX + barWidth/2, baseY + 15);
+      rotate(-PI/4);
+      textAlign(RIGHT);
+      let displayName = motivation.name.replace('seekFood', 'food')
+                                      .replace('collectWood', 'wood')
+                                      .replace('buildHouse', 'build');
+      text(displayName, 0, 0);
+      pop();
+      
+      // Draw value on top of bar
+      fill(255);
+      textSize(9);
+      textAlign(CENTER);
+      text(Math.floor(motivation.score), barX + barWidth/2, baseY - barHeight - 5);
     }
     
-    // Draw UI if citizen is alive
-    if(!this.state.isDead){
-      this.drawUI();
-    }
+    // Add current behavior indicator
+    fill(255, 255, 0);
+    textSize(10);
+    textAlign(LEFT);
+    text("Current: " + this.getCurrentStateText(), chartX, chartY + chartHeight + 30);
+    
+    pop();
   }
+}
+
+// Also add a toggle function for showing/hiding the chart
+toggleMotivationChart() {
+  this.showMotivationChart = !this.showMotivationChart;
+}
+
+// Modify the existing display() method to include the chart
+// Replace the existing display() method with this version:
+display() {
+  // Draw movement trail
+  this.drawHistory();
+  
+  // Consolidated display logic
+  if (this.state.isDead) {
+    this.displayDead();
+  } else {
+    this.displayAlive();
+  }
+  
+  // Draw UI if citizen is alive
+  if(!this.state.isDead){
+    this.drawUI();
+    
+    // Display motivation chart if following this citizen
+    this.displayMotivationChart();
+  }
+}
   
   
   drawUI() {
